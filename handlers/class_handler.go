@@ -18,7 +18,6 @@ func NewClassHandler(db *gorm.DB) *ClassHandler {
 	return &ClassHandler{DB: db}
 }
 
-// 비밀번호 해싱을 위한 유틸리티 함수
 func hashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -27,7 +26,6 @@ func hashPassword(password string) (string, error) {
 	return string(bytes), nil
 }
 
-// 비밀번호 검증을 위한 유틸리티 함수
 func checkPassword(password string, hashedPassword string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 	return err == nil
@@ -50,38 +48,38 @@ func (h *ClassHandler) CreateClass(c *gin.Context) {
 		return
 	}
 
-	// Validate required fields
 	if newClass.Classnum == "" || newClass.Passwd == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Classnum and password are required"})
 		return
 	}
 
-	// 기존 클래스 확인
 	var existingClass models.Class
 	result := h.DB.Where("classnum = ?", newClass.Classnum).First(&existingClass)
 
 	if result.Error == nil {
-		// 클래스가 이미 존재하는 경우
 		if checkPassword(newClass.Passwd, existingClass.Passwd) {
-			// 비밀번호가 일치하는 경우
+			token, err := generateToken(existingClass.ID, existingClass.Classnum)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+				return
+			}
+
 			c.JSON(http.StatusOK, gin.H{
-				"message":  "Class already exists",
+				"message":  "Login successful",
 				"id":       existingClass.ID,
 				"classnum": existingClass.Classnum,
+				"token":    token,
 			})
 			return
 		} else {
-			// 비밀번호가 일치하지 않는 경우
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password for existing class"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 			return
 		}
 	} else if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		// 데이터베이스 오류
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
-	// 비밀번호 해싱
 	hashedPassword, err := hashPassword(newClass.Passwd)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process password"})
@@ -89,9 +87,14 @@ func (h *ClassHandler) CreateClass(c *gin.Context) {
 	}
 	newClass.Passwd = hashedPassword
 
-	// 새로운 클래스 생성
 	if err := h.DB.Create(&newClass).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create class"})
+		return
+	}
+
+	token, err := generateToken(newClass.ID, newClass.Classnum)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
@@ -99,6 +102,7 @@ func (h *ClassHandler) CreateClass(c *gin.Context) {
 		"message":  "Class created successfully",
 		"id":       newClass.ID,
 		"classnum": newClass.Classnum,
+		"token":    token,
 	})
 }
 
@@ -110,18 +114,30 @@ func (h *ClassHandler) CreateClass(c *gin.Context) {
 // @Produce  json
 // @Param id path int true "Class ID"
 // @Success 200 {object} models.Class
-// @Failure 404 {object} map[string]string
+// @Failure 404,403 {object} map[string]string
 func (h *ClassHandler) GetClass(c *gin.Context) {
 	id := c.Param("id")
 	var class models.Class
+
+	// Check authentication
+	classID, exists := c.Get("class_id")
+	if !exists {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authenticated"})
+		return
+	}
 
 	if err := h.DB.Preload("Problems").First(&class, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
 		return
 	}
 
-	// 비밀번호는 응답에서 제외
-	class.Passwd = ""
+	// Verify ownership
+	if classID.(uint) != class.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized to access this class"})
+		return
+	}
+
+	class.Passwd = "" // Remove password from response
 	c.JSON(http.StatusOK, class)
 }
 
@@ -133,18 +149,30 @@ func (h *ClassHandler) GetClass(c *gin.Context) {
 // @Produce  json
 // @Param classnum path string true "Class Number"
 // @Success 200 {object} models.Class
-// @Failure 404 {object} map[string]string
+// @Failure 404,403 {object} map[string]string
 func (h *ClassHandler) GetClassByClassnum(c *gin.Context) {
 	classnum := c.Param("classnum")
 	var class models.Class
+
+	// Check authentication
+	authenticatedClassnum, exists := c.Get("classnum")
+	if !exists {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authenticated"})
+		return
+	}
 
 	if err := h.DB.Preload("Problems").Where("classnum = ?", classnum).First(&class).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
 		return
 	}
 
-	// 비밀번호는 응답에서 제외
-	class.Passwd = ""
+	// Verify ownership
+	if authenticatedClassnum.(string) != class.Classnum {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized to access this class"})
+		return
+	}
+
+	class.Passwd = "" // Remove password from response
 	c.JSON(http.StatusOK, class)
 }
 
@@ -157,14 +185,26 @@ func (h *ClassHandler) GetClassByClassnum(c *gin.Context) {
 // @Param id path int true "Class ID"
 // @Param class body models.Class true "Update class"
 // @Success 200 {object} models.Class
-// @Failure 400,404,500 {object} map[string]string
+// @Failure 400,404,403,500 {object} map[string]string
 func (h *ClassHandler) UpdateClass(c *gin.Context) {
 	id := c.Param("id")
 	var existingClass models.Class
 
-	// 기존 클래스 확인
+	// Check authentication
+	classID, exists := c.Get("class_id")
+	if !exists {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authenticated"})
+		return
+	}
+
 	if err := h.DB.First(&existingClass, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
+		return
+	}
+
+	// Verify ownership
+	if classID.(uint) != existingClass.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized to update this class"})
 		return
 	}
 
@@ -174,7 +214,7 @@ func (h *ClassHandler) UpdateClass(c *gin.Context) {
 		return
 	}
 
-	// 비밀번호 업데이트가 있는 경우
+	// Handle password update
 	if updateData.Passwd != "" {
 		hashedPassword, err := hashPassword(updateData.Passwd)
 		if err != nil {
@@ -183,11 +223,9 @@ func (h *ClassHandler) UpdateClass(c *gin.Context) {
 		}
 		updateData.Passwd = hashedPassword
 	} else {
-		// 비밀번호가 제공되지 않은 경우 기존 비밀번호 유지
 		updateData.Passwd = existingClass.Passwd
 	}
 
-	// 업데이트 수행
 	if err := h.DB.Model(&existingClass).Updates(updateData).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update class"})
 		return
@@ -208,35 +246,43 @@ func (h *ClassHandler) UpdateClass(c *gin.Context) {
 // @Produce  json
 // @Param id path int true "Class ID"
 // @Success 200 {object} map[string]string
-// @Failure 400,500 {object} map[string]string
+// @Failure 400,404,403,500 {object} map[string]string
 func (h *ClassHandler) DeleteClass(c *gin.Context) {
 	id := c.Param("id")
 
-	// 클래스 존재 여부 확인
+	// Check authentication
+	classID, exists := c.Get("class_id")
+	if !exists {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authenticated"})
+		return
+	}
+
 	var class models.Class
 	if err := h.DB.First(&class, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
 		return
 	}
 
-	// 트랜잭션 시작
+	// Verify ownership
+	if classID.(uint) != class.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized to delete this class"})
+		return
+	}
+
 	tx := h.DB.Begin()
 
-	// 관련된 문제들 삭제
 	if err := tx.Where("class_id = ?", id).Delete(&models.Problem{}).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete related problems"})
 		return
 	}
 
-	// 클래스 삭제
 	if err := tx.Delete(&class).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete class"})
 		return
 	}
 
-	// 트랜잭션 커밋
 	tx.Commit()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Class and related problems deleted successfully"})
@@ -257,48 +303,10 @@ func (h *ClassHandler) ListClasses(c *gin.Context) {
 		return
 	}
 
-	// 모든 클래스의 비밀번호 정보 제외
+	// Remove passwords from response
 	for i := range classes {
 		classes[i].Passwd = ""
 	}
 
 	c.JSON(http.StatusOK, classes)
 }
-
-// VerifyClassPassword godoc
-// @Summary Verify class password
-// @Description Verify the password for a specific class
-// @Tags classes
-// @Accept  json
-// @Produce  json
-// @Param id path int true "Class ID"
-// @Param password body map[string]string true "Password"
-// @Success 200 {object} map[string]string
-// @Failure 401,404 {object} map[string]string
-// func (h *ClassHandler) VerifyClassPassword(c *gin.Context) {
-// 	id := c.Param("id")
-// 	var class models.Class
-// 	if err := h.DB.First(&class, id).Error; err != nil {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
-// 		return
-// 	}
-
-// 	var input struct {
-// 		Password string `json:"password"`
-// 	}
-// 	if err := c.ShouldBindJSON(&input); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	if !checkPassword(input.Password, class.Passwd) {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, gin.H{
-// 		"message":  "Password verified successfully",
-// 		"id":       class.ID,
-// 		"classnum": class.Classnum,
-// 	})
-// }
