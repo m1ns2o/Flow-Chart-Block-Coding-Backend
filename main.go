@@ -1,6 +1,7 @@
 ﻿package main
 
 import (
+	"Flow-Chart-Block-Coding-Backend/config"
 	"Flow-Chart-Block-Coding-Backend/db"
 	"Flow-Chart-Block-Coding-Backend/handlers"
 	"log"
@@ -11,8 +12,13 @@ import (
 
 func main() {
 	// 데이터베이스 연결
-	dsn := "flowchart_user:minseo0128@tcp(localhost:3306)/flowchart_db?charset=utf8mb4&parseTime=True&loc=Local"
-	database, err := db.InitDB(dsn)
+	cfg, err := config.LoadConfig("config.json")
+	if err != nil {
+		log.Fatal("Failed to load config:", err)
+	}
+
+	// 데이터베이스 연결
+	database, err := db.InitDB(cfg.GetDSN())
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
