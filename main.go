@@ -54,28 +54,31 @@ func main() {
 	{
 		// Problem 라우트
 		protected.POST("/problems", problemHandler.CreateProblem)
-		protected.GET("/problems/:id", problemHandler.GetProblem)
+		// protected.GET("/problems/:id", problemHandler.GetProblem)
 		protected.PUT("/problems/:id", problemHandler.UpdateProblem)
 		protected.DELETE("/problems/:id", problemHandler.DeleteProblem)
 		protected.GET("/problems", problemHandler.ListProblems)
 
 		// Class 보호된 라우트
 		protected.GET("/classes/:id", classHandler.GetClass)
-		protected.GET("/classes/number/:classnum", classHandler.GetClassByClassnum)
+
 		protected.PUT("/classes/:id", classHandler.UpdateClass)
 		protected.DELETE("/classes/:id", classHandler.DeleteClass)
 		protected.GET("/classes", classHandler.ListClasses)
 	}
 
+	router.GET("/problems/:id", problemHandler.GetProblem)
+	router.GET("/classes/number/:classnum", classHandler.GetClassByClassnum)
+
 	users := router.Group("/users")
-    {
-        users.POST("/", handler.CreateUser)
-        users.GET("/", handler.GetAllUsers)
-        users.GET("/:id", handler.GetUser)
-        // users.PUT("/:id", handler.UpdateUser)
-        users.DELETE("/:id", handler.DeleteUser)
-        // users.GET("/:id/solved", handler.GetUserSolved)
-    }
+	{
+		users.POST("", handler.CreateUser)
+		users.GET("", handler.GetAllUsers)
+		users.GET(":id", handler.GetUser)
+		// users.PUT("/:id", handler.UpdateUser)
+		users.DELETE(":id", handler.DeleteUser)
+		// users.GET("/:id/solved", handler.GetUserSolved)
+	}
 
 	// 서버 시작
 	log.Printf("Server starting on :8080")

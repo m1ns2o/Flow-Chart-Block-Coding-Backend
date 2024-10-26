@@ -150,25 +150,41 @@ func (h *ClassHandler) GetClass(c *gin.Context) {
 // @Param classnum path string true "Class Number"
 // @Success 200 {object} models.Class
 // @Failure 404,403 {object} map[string]string
+// func (h *ClassHandler) GetClassByClassnum(c *gin.Context) {
+// 	classnum := c.Param("classnum")
+// 	var class models.Class
+
+// 	// Check authentication
+// 	authenticatedClassnum, exists := c.Get("classnum")
+// 	if !exists {
+// 		c.JSON(http.StatusForbidden, gin.H{"error": "Not authenticated"})
+// 		return
+// 	}
+
+// 	if err := h.DB.Preload("Problems").Where("classnum = ?", classnum).First(&class).Error; err != nil {
+// 		c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
+// 		return
+// 	}
+
+// 	// Verify ownership
+// 	if authenticatedClassnum.(string) != class.Classnum {
+// 		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized to access this class"})
+// 		return
+// 	}
+
+//		class.Passwd = "" // Remove password from response
+//		c.JSON(http.StatusOK, class)
+//	}
 func (h *ClassHandler) GetClassByClassnum(c *gin.Context) {
 	classnum := c.Param("classnum")
 	var class models.Class
 
-	// Check authentication
-	authenticatedClassnum, exists := c.Get("classnum")
-	if !exists {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Not authenticated"})
-		return
-	}
-
 	if err := h.DB.Preload("Problems").Where("classnum = ?", classnum).First(&class).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
-		return
-	}
-
-	// Verify ownership
-	if authenticatedClassnum.(string) != class.Classnum {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized to access this class"})
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch class"})
 		return
 	}
 
