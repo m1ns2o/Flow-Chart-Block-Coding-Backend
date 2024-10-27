@@ -48,8 +48,10 @@ func main() {
 
 	// 공개 라우트 (인증 불필요)
 	router.POST("/classes", classHandler.CreateClass) // 로그인/회원가입용
-	router.POST("/solve", solvedHandler)
 
+	router.POST("/solve", solvedHandler)
+	router.GET("/solve/user/:username", handlers.GetUserSolvedProblems(database))
+	router.GET("/solve/problem/:problem_id", handlers.GetProblemSolvedUsers(database))
 	// 보호된 라우트 그룹 (인증 필요)
 	protected := router.Group("")
 	protected.Use(handlers.AuthMiddleware())
@@ -78,6 +80,7 @@ func main() {
 		users.GET("", handler.GetAllUsers)
 		users.GET(":id", handler.GetUser)
 		// users.PUT("/:id", handler.UpdateUser)
+		users.GET("class/:classnum", handler.GetUsersByClass)
 		users.DELETE(":id", handler.DeleteUser)
 		// users.GET("/:id/solved", handler.GetUserSolved)
 	}

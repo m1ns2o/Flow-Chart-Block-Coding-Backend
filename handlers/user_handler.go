@@ -110,3 +110,26 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
+
+func (h *UserHandler) GetUsersByClass(c *gin.Context) {
+	classnum := c.Param("classnum")
+
+	// 해당 classnum이 존재하는지 먼저 확인
+	var class models.Class
+	if err := h.db.Where("classnum = ?", classnum).First(&class).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Class not found"})
+		return
+	}
+
+	// 해당 classnum을 가진 모든 사용자 조회
+	var users []models.User
+	if err := h.db.Where("classnum = ?", classnum).Find(&users).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"classnum": classnum,
+		"users":    users,
+	})
+}
