@@ -31,8 +31,9 @@ type User struct {
 }
 
 type Solved struct {
-    ID        uint      `gorm:"primaryKey"`
-    ProblemID uint      `gorm:"foreignKey:ProblemID;references:ID"`
-    UserID    uint      `gorm:"foreignKey:UserID;references:ID"`
-    SolvedAt  time.Time
+	ID        uint   `gorm:"primaryKey"`
+	ProblemID uint   `gorm:"foreignKey:ProblemID;references:ID"`
+	UserID    uint   `gorm:"foreignKey:UserID;references:ID"`
+	UserName  string `gorm:"foreignKey:UserName;references:UserName"`
+	SolvedAt  time.Time
 }

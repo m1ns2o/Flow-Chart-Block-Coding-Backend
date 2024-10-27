@@ -44,9 +44,11 @@ func main() {
 	problemHandler := handlers.NewProblemHandler(database)
 	classHandler := handlers.NewClassHandler(database)
 	handler := handlers.NewUserHandler(database)
+	solvedHandler := handlers.SolvedHandler(database)
 
 	// 공개 라우트 (인증 불필요)
 	router.POST("/classes", classHandler.CreateClass) // 로그인/회원가입용
+	router.POST("/solve", solvedHandler)
 
 	// 보호된 라우트 그룹 (인증 필요)
 	protected := router.Group("")
