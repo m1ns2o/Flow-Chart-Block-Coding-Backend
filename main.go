@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	// gin.SetMode(gin.ReleaseMode)
 	// 설정 로드
 	cfg, err := config.LoadConfig("config.json")
 	if err != nil {

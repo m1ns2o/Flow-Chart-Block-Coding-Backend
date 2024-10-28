@@ -117,7 +117,7 @@ func SolvedHandler(db *gorm.DB) gin.HandlerFunc {
 			ProblemID: submission.ProblemID,
 			UserID:    user.ID,
 			UserName:  user.Name,
-			SolvedAt:  time.Now(),
+			// SolvedAt:  time.Now(),
 		}
 
 		if err := db.Create(&solved).Error; err != nil {
