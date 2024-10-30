@@ -35,55 +35,71 @@ func main() {
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type", "Accept", "X-Requested-With"}, // 헤더 추가
-		ExposeHeaders:    []string{"Content-Length", "Content-Type", "Authorization"},                       // 노출할 헤더 추가
+		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type", "Accept", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type", "Authorization"},
 		AllowCredentials: true,
-		MaxAge:           12 * time.Hour, // preflight 캐시 시간 설정
+		MaxAge:           12 * time.Hour,
 	}))
 
-	// 핸들러 초기화
-	problemHandler := handlers.NewProblemHandler(database)
-	classHandler := handlers.NewClassHandler(database)
-	handler := handlers.NewUserHandler(database)
-	solvedHandler := handlers.SolvedHandler(database)
-
-	// 공개 라우트 (인증 불필요)
-	router.POST("/classes", classHandler.CreateClass) // 로그인/회원가입용
-
-	router.POST("/solve", solvedHandler)
-	router.GET("/solve/user/:username", handlers.GetUserSolvedProblems(database))
-	router.GET("/solve/problem/:problem_id", handlers.GetProblemSolvedUsers(database))
-	// 보호된 라우트 그룹 (인증 필요)
-	protected := router.Group("")
-	protected.Use(handlers.AuthMiddleware())
+	// API 그룹 생성
+	api := router.Group("/api")
 	{
-		// Problem 라우트
-		protected.POST("/problems", problemHandler.CreateProblem)
-		// protected.GET("/problems/:id", problemHandler.GetProblem)
-		protected.PUT("/problems/:id", problemHandler.UpdateProblem)
-		protected.DELETE("/problems/:id", problemHandler.DeleteProblem)
-		protected.GET("/problems", problemHandler.ListProblems)
+		// 핸들러 초기화
+		problemHandler := handlers.NewProblemHandler(database)
+		classHandler := handlers.NewClassHandler(database)
+		handler := handlers.NewUserHandler(database)
+		solvedHandler := handlers.SolvedHandler(database)
 
-		// Class 보호된 라우트
-		protected.GET("/classes/:id", classHandler.GetClass)
+		// Solve 그룹
+		solve := api.Group("/solve")
+		{
+			solve.POST("", solvedHandler)
+			solve.GET("/user/:username", handlers.GetUserSolvedProblems(database))
+			solve.GET("/problem/:problem_id", handlers.GetProblemSolvedUsers(database))
+		}
 
-		protected.PUT("/classes/:id", classHandler.UpdateClass)
-		protected.DELETE("/classes/:id", classHandler.DeleteClass)
-		protected.GET("/classes", classHandler.ListClasses)
-	}
+		// Problems 그룹
+		problems := api.Group("/problems")
+		{
+			problems.GET("/:id", problemHandler.GetProblem)
 
-	router.GET("/problems/:id", problemHandler.GetProblem)
-	router.GET("/classes/number/:classnum", classHandler.GetClassByClassnum)
+			// 보호된 라우트
+			protected := problems.Group("")
+			protected.Use(handlers.AuthMiddleware())
+			{
+				protected.POST("", problemHandler.CreateProblem)
+				protected.PUT("/:id", problemHandler.UpdateProblem)
+				protected.DELETE("/:id", problemHandler.DeleteProblem)
+				protected.GET("", problemHandler.ListProblems)
+			}
+		}
 
-	users := router.Group("/users")
-	{
-		users.POST("", handler.CreateUser)
-		users.GET("", handler.GetAllUsers)
-		users.GET(":id", handler.GetUser)
-		// users.PUT("/:id", handler.UpdateUser)
-		users.GET("class/:classnum", handler.GetUsersByClass)
-		users.DELETE(":id", handler.DeleteUser)
-		// users.GET("/:id/solved", handler.GetUserSolved)
+		// Classes 그룹
+		classes := api.Group("/classes")
+		{
+			classes.POST("", classHandler.CreateClass) // 로그인/회원가입용
+			classes.GET("/number/:classnum", classHandler.GetClassByClassnum)
+
+			// 보호된 라우트
+			protected := classes.Group("")
+			protected.Use(handlers.AuthMiddleware())
+			{
+				protected.GET("/:id", classHandler.GetClass)
+				protected.PUT("/:id", classHandler.UpdateClass)
+				protected.DELETE("/:id", classHandler.DeleteClass)
+				protected.GET("", classHandler.ListClasses)
+			}
+		}
+
+		// Users 그룹
+		users := api.Group("/users")
+		{
+			users.POST("", handler.CreateUser)
+			users.GET("", handler.GetAllUsers)
+			users.GET(":id", handler.GetUser)
+			users.GET("class/:classnum", handler.GetUsersByClass)
+			users.DELETE(":id", handler.DeleteUser)
+		}
 	}
 
 	// 서버 시작
